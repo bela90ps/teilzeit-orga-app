@@ -46,7 +46,8 @@ textarea{width:100%;height:160px;font:12px monospace;background:var(--bg);color:
 <div class="card"><button class="p" id="ex" style="width:100%">📤 Monat als ICS exportieren</button></div>
 <div class="card"><b>Datensicherung</b><div class="bt"><button id="bk">💾 Backup speichern</button><button onclick="document.getElementById('rs').click()">♻️ Backup laden</button></div><input type="file" id="rs" accept=".json,application/json" hidden></div>
 <div class="card"><b>Einstellungen</b>
-<div class="set"><span>Soll-Teilzeitstunden pro Monat</span><input type="number" id="plan" min="0" step="0.5"></div>
+<div class="set"><span>Fester Teilzeit-Wochentag</span><select id="wd"><option value="1">Montag</option><option value="2">Dienstag</option><option value="3">Mittwoch</option><option value="4">Donnerstag</option><option value="5">Freitag</option></select></div>
+<div class="set"><span>Stunden pro Teilzeittag (Soll)</span><input type="number" id="hpd" min="0" step="0.5"></div>
 <div class="set"><span>Start-Monat der Saldo-Rechnung</span><input type="month" id="start"></div>
 <div class="set"><span>Übertrag zum Start (Std, ±)</span><input type="number" id="c0" step="0.5"></div>
 <hr style="border:0;border-top:1px solid var(--ln)">
@@ -62,11 +63,14 @@ const $=s=>document.querySelector(s),p2=n=>String(n).padStart(2,'0');
 const MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 const now=new Date();
 const NATIVE=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()),PL=k=>window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins[k];
-const def=()=>({e:{},plan:40,start:now.getFullYear()+'-'+p2(now.getMonth()+1),c0:0,nOn:false,nD:1,nT:'18:00',done:{}});
+const def=()=>({e:{},wd:1,hpd:8,start:now.getFullYear()+'-'+p2(now.getMonth()+1),c0:0,nOn:false,nD:1,nT:'18:00',done:{}});
 let S;try{S=Object.assign(def(),JSON.parse(localStorage.getItem('tz')||'{}'))}catch(e){S=def()}
 const save=()=>{try{localStorage.setItem('tz',JSON.stringify(S))}catch(e){}sched()};
 let Y=now.getFullYear(),M=now.getMonth(),sel=null;
 const K=(y,m,d)=>y+'-'+p2(m+1)+'-'+p2(d);
+const WD=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+function wdays(y,m){let c=0,h=0;const n=new Date(y,m+1,0).getDate();for(let d=1;d<=n;d++)if(new Date(y,m,d).getDay()===+S.wd){if(isH(K(y,m,d)))h++;else c++}return {c,h}}
+const plan=(y,m)=>wdays(y,m).c*(+S.hpd||0);
 const hc={};
 function hol(y){if(hc[y])return hc[y];
  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;
@@ -77,7 +81,7 @@ function hol(y){if(hc[y])return hc[y];
  return hc[y]=r}
 const isH=k=>hol(+k.slice(0,4))[k];
 function used(y,m){const pre=y+'-'+p2(m+1);let s=0;for(const k in S.e)if(k.startsWith(pre)&&!isH(k))s+=+S.e[k].h||0;return s}
-function carryIn(y,m){const [sy,sm]=S.start.split('-').map(Number);const si=sy*12+sm-1,i=y*12+m;if(i<si)return 0;let c=+S.c0||0;for(let k=si;k<i;k++)c+=(+S.plan||0)-used(Math.floor(k/12),k%12);return c}
+function carryIn(y,m){const [sy,sm]=S.start.split('-').map(Number);const si=sy*12+sm-1,i=y*12+m;if(i<si)return 0;let c=+S.c0||0;for(let k=si;k<i;k++)c+=plan(Math.floor(k/12),k%12)-used(Math.floor(k/12),k%12);return c}
 const fmt=h=>{const s=h<0?'−':'',a=Math.abs(h),d=Math.floor(a/8+1e-9),r=Math.round((a-d*8)*100)/100;return s+d+' Tg '+r+' Std'};
 const tot=h=>(Math.round(h*100)/100)+' Std';
 function render(){
@@ -91,11 +95,11 @@ function render(){
   let inf='';if(ho)inf='<small>'+ho.slice(0,10)+'</small>';else{if(e&&+e.h>0)inf+=e.h+'h ';if(e&&e.g)inf+='👵'}
   h+=`<div class="${cl}" data-k="${k}"><span>${d}</span><small>${inf}</small></div>`}
  $('#cal').innerHTML=h;
- const ci=carryIn(Y,M),pl=+S.plan||0,u=used(Y,M),av=ci+pl,rest=av-u;
+ const ci=carryIn(Y,M),pl=plan(Y,M),wk=wdays(Y,M),u=used(Y,M),av=ci+pl,rest=av-u;
  const c=x=>x<0?'neg':x>0?'pos':'';
  $('#sum').innerHTML=`<b>Auswertung ${MN[M]}</b>
  <div class="row"><span>Übertrag aus Vormonaten</span><span class="${c(ci)}">${fmt(ci)}<br><small class="mu">${tot(ci)}</small></span></div>
- <div class="row"><span>Soll diesen Monat</span><span>${fmt(pl)}<br><small class="mu">${tot(pl)}</small></span></div>
+ <div class="row"><span>Soll: ${wk.c} × ${WD[S.wd]} à ${S.hpd} Std${wk.h?`<br><small class="mu">${wk.h} ${WD[S.wd]} ist Feiertag, zählt nicht</small>`:''}</span><span>${fmt(pl)}<br><small class="mu">${tot(pl)}</small></span></div>
  <div class="row"><span>Verfügbar gesamt</span><span>${fmt(av)}<br><small class="mu">${tot(av)}</small></span></div>
  <div class="row"><span>Genommen (ohne Feiertage)</span><span>${fmt(u)}<br><small class="mu">${tot(u)}</small></span></div>
  <div class="row"><span>Rest / Übertrag in Folgemonat</span><span class="${c(rest)}">${fmt(rest)}<br><small class="mu">${tot(rest)}</small></span></div>
@@ -120,9 +124,9 @@ $('#cal').onclick=ev=>{const c=ev.target.closest('.d[data-k]');if(c)sheet(c.data
 $('#pv').onclick=()=>{M--;if(M<0){M=11;Y--}render()};
 $('#nx').onclick=()=>{M++;if(M>11){M=0;Y++}render()};
 // Einstellungen
-$('#plan').value=S.plan;$('#start').value=S.start;$('#c0').value=S.c0;$('#nOn').checked=S.nOn;$('#nD').value=S.nD;$('#nT').value=S.nT;
+$('#wd').value=S.wd;$('#hpd').value=S.hpd;$('#start').value=S.start;$('#c0').value=S.c0;$('#nOn').checked=S.nOn;$('#nD').value=S.nD;$('#nT').value=S.nT;
 const bind=(id,f)=>$(id).onchange=()=>{f();save();render()};
-bind('#plan',()=>S.plan=+$('#plan').value||0);bind('#start',()=>S.start=$('#start').value||S.start);bind('#c0',()=>S.c0=+$('#c0').value||0);
+bind('#wd',()=>S.wd=+$('#wd').value);bind('#hpd',()=>S.hpd=+$('#hpd').value||0);bind('#start',()=>S.start=$('#start').value||S.start);bind('#c0',()=>S.c0=+$('#c0').value||0);
 bind('#nOn',()=>{S.nOn=$('#nOn').checked;if(S.nOn)askPerm()});bind('#nD',()=>S.nD=+$('#nD').value);bind('#nT',()=>S.nT=$('#nT').value||'18:00');
 async function askPerm(){try{if(NATIVE){const r=await PL('LocalNotifications').requestPermissions();$('#perm').textContent=r.display==='granted'?'🔔 Erlaubt':'🔕 Nicht erlaubt'}else{const r=await Notification.requestPermission();$('#perm').textContent=r==='granted'?'🔔 Erlaubt':'🔕 Nicht erlaubt'}}catch(e){$('#perm').textContent='Nicht unterstützt'}}
 $('#perm').onclick=askPerm;
